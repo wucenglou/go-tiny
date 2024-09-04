@@ -1,9 +1,11 @@
 package controller
 
 import (
+	"fmt"
 	"go-tiny/initialize"
 	"go-tiny/model"
 	"go-tiny/utils"
+	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
@@ -31,6 +33,12 @@ func (uc *UserController) CreateUser(c *gin.Context) {
 		return
 	}
 
+	// 检查用户名是否已存在
+	if initialize.DB.Where("username = ?", user.Username).First(&user).RowsAffected > 0 {
+		c.JSON(http.StatusConflict, gin.H{"error": "Username already exists"})
+		return
+	}
+
 	// 对密码进行哈希处理
 	hashedPassword, err := HashPassword(user.Password)
 	if err != nil {
@@ -41,7 +49,15 @@ func (uc *UserController) CreateUser(c *gin.Context) {
 
 	// 创建新用户
 	initialize.DB.Create(&user)
-	c.JSON(201, user)
+	// 构建响应结构体
+	responseUser := model.UserResponse{
+		ID:       user.ID,
+		Username: user.Username,
+		Email:    user.Email,
+		// 其他需要返回的字段
+	}
+
+	c.JSON(201, responseUser)
 }
 
 // UpdateUser updates an existing user's information.
@@ -102,15 +118,18 @@ func (uc *UserController) Login(c *gin.Context) {
 	}
 
 	var user model.User
-	result := initialize.DB.Where("username = ?", loginData.Username).First(&user)
-	if result.Error != nil {
-		c.JSON(404, gin.H{"error": "User not found"})
+	err := initialize.DB.Where("username = ?", loginData.Username).First(&user).Error
+	if err != nil {
+		fmt.Println("Database Error:", err)
+		c.JSON(401, gin.H{"error": "user not found"})
 		return
 	}
 
-	// 验证提供的密码是否匹配存储的哈希密码
-	if !VerifyPassword(loginData.Password, user.Password) {
-		c.JSON(401, gin.H{"error": "Invalid credentials"})
+	// 验证密码
+	match, err := VerifyPassword(loginData.Password, user.Password)
+	if !match || err != nil {
+		fmt.Println("Password Verification Error:", err)
+		c.JSON(401, gin.H{"error": "invalid password"})
 		return
 	}
 
@@ -134,7 +153,10 @@ func HashPassword(password string) (string, error) {
 }
 
 // VerifyPassword checks if the provided password matches the stored hashed password.
-func VerifyPassword(password, hash string) bool {
+func VerifyPassword(password, hash string) (bool, error) {
 	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
-	return err == nil
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
