@@ -1,0 +1,22 @@
+server:
+  port: 8084
+
+database:
+  driver: mysql
+  host: localhost
+  port: 3306
+  username: gotiny
+  password: 123456
+  dbname: gotiny
+  charset: utf8mb4
+  parseTime: true
+  loc: Local
+
+redis:
+  addr: localhost:6379
+  password: "123456"
+  db: 0
+
+jwt:
+  secret: gotiny
+  expire_hours: 24
