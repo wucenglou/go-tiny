@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"fmt"
 	"go-tiny/initialize"
 	"go-tiny/model"
 	"go-tiny/utils"
@@ -12,8 +11,8 @@ import (
 
 type UserController struct{}
 
+// GetUsers retrieves a list of all users.
 func (uc *UserController) GetUsers(c *gin.Context) {
-	fmt.Println("GetUsers")
 	var users []model.User
 	result := initialize.DB.Find(&users)
 	if result.Error != nil {
@@ -23,24 +22,29 @@ func (uc *UserController) GetUsers(c *gin.Context) {
 	c.JSON(200, users)
 }
 
+// CreateUser creates a new user with a hashed password.
 func (uc *UserController) CreateUser(c *gin.Context) {
 	var user model.User
 	if err := c.ShouldBindJSON(&user); err != nil {
+		// 如果绑定请求体到 user 结构体失败，则返回错误
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 
+	// 对密码进行哈希处理
 	hashedPassword, err := HashPassword(user.Password)
 	if err != nil {
 		c.JSON(500, gin.H{"error": "Failed to hash password"})
 		return
 	}
-
 	user.Password = hashedPassword
+
+	// 创建新用户
 	initialize.DB.Create(&user)
 	c.JSON(201, user)
 }
 
+// UpdateUser updates an existing user's information.
 func (uc *UserController) UpdateUser(c *gin.Context) {
 	var user model.User
 	if err := initialize.DB.First(&user, c.Param("id")).Error; err != nil {
@@ -48,17 +52,19 @@ func (uc *UserController) UpdateUser(c *gin.Context) {
 		return
 	}
 
-	// 确保只有该用户才能更新自己的资料
+	// 检查是否是当前用户本人更新信息
 	if c.GetString("username") != user.Username {
 		c.AbortWithStatusJSON(403, gin.H{"error": "Permission denied"})
 		return
 	}
 
+	// 绑定请求体到 user 结构体
 	if err := c.ShouldBindJSON(&user); err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 
+	// 如果密码字段有值，则对其进行哈希处理
 	if user.Password != "" {
 		hashedPassword, err := HashPassword(user.Password)
 		if err != nil {
@@ -68,10 +74,12 @@ func (uc *UserController) UpdateUser(c *gin.Context) {
 		user.Password = hashedPassword
 	}
 
+	// 保存更新后的用户信息
 	initialize.DB.Save(&user)
 	c.JSON(200, user)
 }
 
+// DeleteUser deletes an existing user.
 func (uc *UserController) DeleteUser(c *gin.Context) {
 	var user model.User
 	if initialize.DB.Delete(&user, c.Param("id")).RowsAffected == 0 {
@@ -81,6 +89,7 @@ func (uc *UserController) DeleteUser(c *gin.Context) {
 	c.JSON(204, gin.H{"message": "User deleted"})
 }
 
+// Login authenticates a user and generates a JWT token.
 func (uc *UserController) Login(c *gin.Context) {
 	var loginData struct {
 		Username string `json:"username"`
@@ -99,11 +108,13 @@ func (uc *UserController) Login(c *gin.Context) {
 		return
 	}
 
+	// 验证提供的密码是否匹配存储的哈希密码
 	if !VerifyPassword(loginData.Password, user.Password) {
 		c.JSON(401, gin.H{"error": "Invalid credentials"})
 		return
 	}
 
+	// 生成JWT令牌
 	token, err := utils.GenerateToken(user.Username)
 	if err != nil {
 		c.JSON(500, gin.H{"error": "Failed to generate token"})

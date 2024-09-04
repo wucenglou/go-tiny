@@ -1,0 +1,39 @@
+version: '3.8'
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./config.yaml:/app/config.yaml
+    ports:
+      - "8084:8084"
+    depends_on:
+      - db
+      - redis
+    # environment:
+      # 如果需要通过环境变量传递额外的配置
+      # - DATABASE_URL=mysql://gotiny:123456@db:3306/gotiny?charset=utf8mb4&parseTime=true&loc=Local
+  db:
+    image: mysql:latest
+    command: --default-authentication-plugin=mysql_native_password
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: 123456
+      MYSQL_DATABASE: gotiny
+      MYSQL_USER: gotiny
+      MYSQL_PASSWORD: 123456
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+  redis:
+    image: redis:latest
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+volumes:
+  db_data:
+  redis_data:

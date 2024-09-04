@@ -31,6 +31,7 @@ func RegisterTables(db *gorm.DB) {
 	err := db.AutoMigrate(
 		&model.User{},
 		&model.Blog{},
+		&model.FileUploadAndDownload{},
 	)
 	if err != nil {
 		log.Fatalf("Error migrating database: %v", err)

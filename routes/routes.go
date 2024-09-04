@@ -10,36 +10,59 @@ import (
 func SetupRoutes(r *gin.Engine) {
 	userController := controller.UserController{}
 	blogController := controller.BlogController{}
+	commonController := controller.CommonController{}
+
+	// 健康检查路由
+	r.GET("/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"message": "I am ok!",
+		})
+	})
+
+	// 设置通用路由
+	commonRouter := r.Group("/api/common")
+	{
+		// 保护需要认证的路由
+		protectedCommonRouter := commonRouter.Group("")
+		protectedCommonRouter.Use(middleware.JWTAuth())
+		{
+			// 添加上传头像的路由
+			protectedCommonRouter.POST("/avatar", middleware.UploadMiddleware(), commonController.Upload)
+
+			// 获取当前登录用户信息
+			protectedCommonRouter.GET("/user", commonController.GetCurrentUser)
+		}
+	}
 
 	// 设置用户路由
 	userRouter := r.Group("/api/users")
 	{
-		userRouter.POST("", userController.CreateUser)
-		userRouter.POST("/login", userController.Login)
-		userRouter.GET("", userController.GetUsers) // 保持没有尾部斜杠
+		userRouter.POST("", userController.CreateUser)  // 创建用户
+		userRouter.POST("/login", userController.Login) // 登录用户
+		userRouter.GET("", userController.GetUsers)     // 获取所有用户列表
 
 		// 保护需要认证的路由
-		protectedUserRouter := userRouter.Group("") // 使用空字符串来避免尾部斜杠
+		protectedUserRouter := userRouter.Group("")
 		protectedUserRouter.Use(middleware.JWTAuth())
 		{
-			protectedUserRouter.PUT("/:id", userController.UpdateUser)
-			protectedUserRouter.DELETE("/:id", userController.DeleteUser)
+			protectedUserRouter.PUT("/:id", userController.UpdateUser)    // 更新用户
+			protectedUserRouter.DELETE("/:id", userController.DeleteUser) // 删除用户
 		}
 	}
 
 	// 设置博客路由
 	blogRouter := r.Group("/api/blogs")
 	{
-		blogRouter.POST("", blogController.CreateBlog)
+		blogRouter.POST("", blogController.CreateBlog) // 创建博客
 
 		// 保护需要认证的路由
-		protectedBlogRouter := blogRouter.Group("") // 使用空字符串来避免尾部斜杠
+		protectedBlogRouter := blogRouter.Group("")
 		protectedBlogRouter.Use(middleware.JWTAuth())
 		{
-			protectedBlogRouter.PUT("/:id", blogController.UpdateBlog)
-			protectedBlogRouter.DELETE("/:id", blogController.DeleteBlog)
-			protectedBlogRouter.GET("/:id", blogController.GetBlog)
-			protectedBlogRouter.GET("", blogController.GetBlogs) // 保持没有尾部斜杠
+			protectedBlogRouter.PUT("/:id", blogController.UpdateBlog)    // 更新博客
+			protectedBlogRouter.DELETE("/:id", blogController.DeleteBlog) // 删除博客
+			protectedBlogRouter.GET("/:id", blogController.GetBlog)       // 获取单个博客
+			protectedBlogRouter.GET("", blogController.GetBlogs)          // 获取所有博客
 		}
 	}
 }
