@@ -1,38 +1,33 @@
-# 使用官方的 Go 运行时作为基础镜像
-FROM golang:1.18-alpine as builder
+FROM golang:alpine as builder
 
-# 设置工作目录
-WORKDIR /app
-
-# 将当前目录的内容复制到容器的工作目录中
+WORKDIR /go/src/github.com/wucenglou/go-tiny
 COPY . .
 
-# 设置环境变量以避免警告信息
-ENV CGO_ENABLED=0
+RUN go env -w GO111MODULE=on \
+    && go env -w GOPROXY=https://goproxy.cn,direct \
+    && go env -w CGO_ENABLED=0 \
+    && go env \
+    && go mod tidy \
+    && go build -o server .
 
-# 安装依赖
-RUN go mod download
-
-# 构建应用程序
-RUN go build -o go-tiny .
-
-# 使用 Alpine Linux 作为最终运行时的基础镜像
 FROM alpine:latest
 
-# 安装必要的依赖
-RUN apk add --no-cache ca-certificates
+# 设置时区
+ENV TZ=Asia/Shanghai
+# RUN apk update && apk add --no-cache tzdata openntpd \
+#     && ln -sf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
-# 设置工作目录
-WORKDIR /app
+WORKDIR /go/src/github.com/wucenglou/go-tiny
 
-# 将构建的应用程序复制到最终的镜像中
-COPY --from=builder /app/go-tiny /app/go-tiny
+COPY --from=builder /go/src/github.com/wucenglou/go-tiny/server ./server
+COPY --from=builder /go/src/github.com/wucenglou/go-tiny/config.yaml ./config.yaml
 
-# 创建一个数据卷来存放配置文件
-VOLUME ["/app/config"]
+# 挂载目录：如果使用了sqlite数据库，容器命令示例：docker run -d -v /宿主机路径/gva.db:/go/src/github.com/flipped-aurora/gin-vue-admin/server/gva.db -p 8888:8888 --name gva-server-v1 gva-server:1.0
+# VOLUME ["/go/src/github.com/flipped-aurora/gin-vue-admin/server"]
 
-# 设置端口
+# 创建数据卷来存放配置文件
+VOLUME ["/go/src/github.com/wucenglou/go-tiny"]
+
 EXPOSE 8084
 
-# 启动命令
-CMD ["./go-tiny"]
+CMD ["./server", "-c", "config.yaml"]

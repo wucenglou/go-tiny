@@ -2,9 +2,12 @@ package routes
 
 import (
 	"go-tiny/controller"
+	"go-tiny/docs"
 	"go-tiny/middleware"
 
 	"github.com/gin-gonic/gin"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
 func SetupRoutes(r *gin.Engine) {
@@ -18,6 +21,14 @@ func SetupRoutes(r *gin.Engine) {
 			"message": "I am ok!",
 		})
 	})
+
+	// docs.SwaggerInfo.Title = "Swagger Example API"
+	// docs.SwaggerInfo.Description = "This is a sample server Petstore server."
+	// docs.SwaggerInfo.Version = "1.0"
+	// docs.SwaggerInfo.Host = "petstore.swagger.io"
+	docs.SwaggerInfo.BasePath = "/v2"
+	// docs.SwaggerInfo.Schemes = []string{"http", "https"}
+	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	// 设置通用路由
 	commonRouter := r.Group("/api/common")
@@ -45,6 +56,7 @@ func SetupRoutes(r *gin.Engine) {
 		protectedUserRouter := userRouter.Group("")
 		protectedUserRouter.Use(middleware.JWTAuth())
 		{
+			protectedUserRouter.GET("/user", userController.GetUser)      // 获取单个用户信息
 			protectedUserRouter.PUT("/:id", userController.UpdateUser)    // 更新用户
 			protectedUserRouter.DELETE("/:id", userController.DeleteUser) // 删除用户
 		}

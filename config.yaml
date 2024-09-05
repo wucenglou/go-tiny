@@ -3,7 +3,7 @@ server:
 
 database:
   driver: mysql
-  host: localhost
+  host: host.docker.internal
   port: 3306
   username: gotiny
   password: 123456
@@ -13,10 +13,10 @@ database:
   loc: Local
 
 redis:
-  addr: localhost:6379
+  addr: host.docker.internal:6379
   password: "123456"
   db: 0
 
 jwt:
   secret: gotiny
-  expire_hours: 24
+  expire_hours: 720

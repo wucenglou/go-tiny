@@ -1,0 +1,93 @@
+definitions:
+  response.Response:
+    properties:
+      code:
+        type: integer
+      data: {}
+      msg:
+        type: string
+    type: object
+info:
+  contact: {}
+paths:
+  /api/login:
+    post:
+      consumes:
+      - application/json
+      description: 用户通过用户名和密码登录系统
+      parameters:
+      - description: 用户名
+        in: body
+        name: username
+        required: true
+        schema:
+          type: string
+      - description: 密码
+        in: body
+        name: password
+        required: true
+        schema:
+          type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 登录成功，返回JWT令牌
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  items:
+                    type: object
+                  type: array
+                msg:
+                  type: string
+              type: object
+      summary: 用户登录
+      tags:
+      - 用户
+  /api/users:
+    post:
+      consumes:
+      - application/json
+      description: 用户通过用户名和密码注册
+      parameters:
+      - description: 用户名
+        in: body
+        name: userName
+        required: true
+        schema:
+          type: string
+      - description: 邮箱
+        in: body
+        name: email
+        required: true
+        schema:
+          type: string
+      - description: 密码
+        in: body
+        name: password
+        required: true
+        schema:
+          type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 登录成功，返回JWT令牌
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  items:
+                    type: object
+                  type: array
+                msg:
+                  type: string
+              type: object
+      summary: 用户注册
+      tags:
+      - 用户
+swagger: "2.0"

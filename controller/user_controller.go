@@ -4,17 +4,37 @@ import (
 	"fmt"
 	"go-tiny/initialize"
 	"go-tiny/model"
+	"go-tiny/model/common/response"
 	"go-tiny/utils"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"golang.org/x/crypto/bcrypt"
 )
 
 type UserController struct{}
 
 // GetUsers retrieves a list of all users.
+func (uc *UserController) GetUser(c *gin.Context) {
+	// 根据jwt解析用户
+	userInfo, ok := c.Get("claims")
+	if !ok {
+		c.AbortWithStatusJSON(401, gin.H{"error": "Unauthorized"})
+		return
+	}
+	var user model.User
+	userID := userInfo.(*utils.Claims).Id
+	err := initialize.DB.Where("id = ?", userID).First(&user).Error
+	if err != nil {
+		c.AbortWithStatusJSON(500, gin.H{"error": "Failed to fetch user"})
+		return
+	}
+	response.OkWithData(gin.H{"user": user}, c)
+}
+
 func (uc *UserController) GetUsers(c *gin.Context) {
+	// 根据jwt解析用户
+	claims, _ := utils.ParseToken(c.GetHeader("Authorization"))
+	fmt.Println("claims:", claims)
 	var users []model.User
 	result := initialize.DB.Find(&users)
 	if result.Error != nil {
@@ -24,28 +44,40 @@ func (uc *UserController) GetUsers(c *gin.Context) {
 	c.JSON(200, users)
 }
 
-// CreateUser creates a new user with a hashed password.
+// @Summary 用户注册
+// @Description 用户通过用户名和密码注册
+// @Tags 用户
+// @Accept json
+// @Produce json
+// @Param userName body string true "用户名"
+// @Param email body string true "邮箱"
+// @Param password body string true "密码"
+// @Success 200 {object} response.Response{data=[]interface{},msg=string} "登录成功，返回用户信息"
+// @Router /api/users [post]
 func (uc *UserController) CreateUser(c *gin.Context) {
-	var user model.User
-	if err := c.ShouldBindJSON(&user); err != nil {
+	var userReq model.UserRequest
+	if err := c.ShouldBindJSON(&userReq); err != nil {
 		// 如果绑定请求体到 user 结构体失败，则返回错误
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 
+	// 检查密码长度
+	if len(userReq.Password) < 6 {
+		c.JSON(400, gin.H{"error": "Password must be at least 6 characters long"})
+		return
+	}
+
 	// 检查用户名是否已存在
-	if initialize.DB.Where("username = ?", user.Username).First(&user).RowsAffected > 0 {
+	user := model.User{}
+	if initialize.DB.Where("username = ?", userReq.Username).First(&user).RowsAffected > 0 {
 		c.JSON(http.StatusConflict, gin.H{"error": "Username already exists"})
 		return
 	}
 
-	// 对密码进行哈希处理
-	hashedPassword, err := HashPassword(user.Password)
-	if err != nil {
-		c.JSON(500, gin.H{"error": "Failed to hash password"})
-		return
-	}
-	user.Password = hashedPassword
+	user.Username = userReq.Username
+	user.Email = userReq.Email
+	user.Password = utils.BcryptHash(userReq.Password)
 
 	// 创建新用户
 	initialize.DB.Create(&user)
@@ -82,12 +114,11 @@ func (uc *UserController) UpdateUser(c *gin.Context) {
 
 	// 如果密码字段有值，则对其进行哈希处理
 	if user.Password != "" {
-		hashedPassword, err := HashPassword(user.Password)
-		if err != nil {
-			c.JSON(500, gin.H{"error": "Failed to hash password"})
-			return
-		}
+		hashedPassword := utils.BcryptHash(user.Password)
 		user.Password = hashedPassword
+	} else {
+		c.JSON(400, gin.H{"error": "Password cannot be empty"})
+		return
 	}
 
 	// 保存更新后的用户信息
@@ -105,7 +136,15 @@ func (uc *UserController) DeleteUser(c *gin.Context) {
 	c.JSON(204, gin.H{"message": "User deleted"})
 }
 
-// Login authenticates a user and generates a JWT token.
+// @Summary 用户登录
+// @Description 用户通过用户名和密码登录系统
+// @Tags 用户
+// @Accept json
+// @Produce json
+// @Param username body string true "用户名"
+// @Param password body string true "密码"
+// @Success 200 {object} response.Response{data=[]interface{},msg=string} "登录成功，返回JWT令牌"
+// @Router /api/login [post]
 func (uc *UserController) Login(c *gin.Context) {
 	var loginData struct {
 		Username string `json:"username"`
@@ -126,37 +165,17 @@ func (uc *UserController) Login(c *gin.Context) {
 	}
 
 	// 验证密码
-	match, err := VerifyPassword(loginData.Password, user.Password)
-	if !match || err != nil {
-		fmt.Println("Password Verification Error:", err)
+	ok := utils.BcryptCheck(loginData.Password, user.Password)
+	if !ok {
 		c.JSON(401, gin.H{"error": "invalid password"})
 		return
 	}
 
 	// 生成JWT令牌
-	token, err := utils.GenerateToken(user.Username)
+	token, err := utils.GenerateToken(user.ID, user.Username)
 	if err != nil {
 		c.JSON(500, gin.H{"error": "Failed to generate token"})
 		return
 	}
-
-	c.JSON(200, gin.H{"token": token})
-}
-
-// HashPassword hashes the provided password using bcrypt.
-func HashPassword(password string) (string, error) {
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		return "", err
-	}
-	return string(hash), nil
-}
-
-// VerifyPassword checks if the provided password matches the stored hashed password.
-func VerifyPassword(password, hash string) (bool, error) {
-	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
-	if err != nil {
-		return false, err
-	}
-	return true, nil
+	response.OkWithData(gin.H{"token": token}, c)
 }

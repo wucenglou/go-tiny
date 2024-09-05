@@ -2,8 +2,10 @@ package utils
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/spf13/viper"
 )
@@ -11,11 +13,12 @@ import (
 var jwtKey = []byte(viper.GetString("jwt.secret"))
 
 type Claims struct {
+	Id       uint   `json:"id"`
 	Username string `json:"username"`
 	jwt.RegisteredClaims
 }
 
-func GenerateToken(username string) (string, error) {
+func GenerateToken(id uint, username string) (string, error) {
 	nowTime := time.Now()
 
 	// 计算过期时间
@@ -23,6 +26,7 @@ func GenerateToken(username string) (string, error) {
 	expireTime := nowTime.Add(time.Duration(expireHours) * time.Hour)
 
 	claims := &Claims{
+		id,
 		username,
 		jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(expireTime),
@@ -48,4 +52,9 @@ func ParseToken(tokenString string) (*Claims, error) {
 	}
 
 	return nil, errors.New("invalid token")
+}
+
+func GetUserID(c *gin.Context) uint {
+	fmt.Println(c)
+	return 1
 }

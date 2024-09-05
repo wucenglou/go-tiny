@@ -12,6 +12,13 @@ type User struct {
 	Avatar   string `json:"avatar" gorm:"type:varchar(255);not null;default:'';comment:用户头像URL"` // 用户头像URL
 }
 
+type UserRequest struct {
+	Username string `json:"username" binding:"required"`
+	Email    string `json:"email" binding:"required"`
+	Password string `json:"password" binding:"required"`
+	Avatar   string `json:"avatar"`
+}
+
 type UserResponse struct {
 	ID       uint   `json:"id"`
 	Username string `json:"username"`
