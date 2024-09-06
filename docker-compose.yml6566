@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  go-tiny-app:
+    build: .
+    container_name: go-tiny-app
+    volumes:
+      - ./config.yaml:/app/go-tiny/config.yaml
+    ports:
+      - "8084:8084"
+    depends_on:
+      - db
+      - redis
+    environment:
+      - TZ=Asia/Shanghai
+    command: ["./server", "-c", "config.yaml"]
+
+  db:
+    image: mysql:8.0
+    container_name: go-tiny-db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: "123456"
+      MYSQL_DATABASE: "gotiny"
+      MYSQL_USER: "gotiny"
+      MYSQL_PASSWORD: "123456"
+    volumes:
+      - ./mysql-data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+
+  redis:
+    image: redis:6.0-alpine
+    container_name: go-tiny-redis
+    restart: always
+    environment:
+      REDIS_PASSWORD: "123456"  # 添加 Redis 密码
+    volumes:
+      - ./redis-data:/data
+    ports:
+      - "6379:6379"
+
+volumes:
+  mysql-data:
+  redis-data:
