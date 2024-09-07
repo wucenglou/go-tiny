@@ -43,11 +43,13 @@ func getDSN() string {
 	parseTimeStr := strconv.FormatBool(viper.GetBool("database.parseTime"))
 	locStr := viper.GetString("database.loc")
 
+	fmt.Println("------------------------------")
 	fmt.Println(viper.GetString("database.username"))
 	fmt.Println(viper.GetString("database.password"))
 	fmt.Println(viper.GetString("database.host"))
 	fmt.Println(viper.GetString("database.port"))
 	fmt.Println(viper.GetString("database.dbname"))
+	fmt.Println("------------------------------")
 
 	return viper.GetString("database.username") + ":" +
 		viper.GetString("database.password") + "@tcp(" +

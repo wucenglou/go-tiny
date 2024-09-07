@@ -1,2 +1,5 @@
 *.exe
 *.exe~
+
+mysql-data
+redis-data

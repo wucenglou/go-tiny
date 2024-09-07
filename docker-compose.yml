@@ -4,8 +4,7 @@ services:
   go-tiny-app:
     build: .
     container_name: go-tiny-app
-    volumes:
-      - ./config.yaml:/app/go-tiny/config.yaml
+    restart: always
     ports:
       - "8084:8084"
     depends_on:
@@ -13,17 +12,25 @@ services:
       - redis
     environment:
       - TZ=Asia/Shanghai
+    volumes:
+      - ./config.yaml:/app/go-tiny/config.yaml
     command: ["./server", "-c", "config.yaml"]
 
   db:
-    image: mysql:8.0
+    image: mysql:8.0.21
     container_name: go-tiny-db
     restart: always
+    command: mysqld --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci #设置utf8字符集
     environment:
       MYSQL_ROOT_PASSWORD: "123456"
       MYSQL_DATABASE: "gotiny"
       MYSQL_USER: "gotiny"
       MYSQL_PASSWORD: "123456"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "gva", "-pAa@6447985"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
     volumes:
       - ./mysql-data:/var/lib/mysql
     ports:
@@ -33,12 +40,15 @@ services:
     image: redis:6.0-alpine
     container_name: go-tiny-redis
     restart: always
-    environment:
-      REDIS_PASSWORD: "123456"  # 添加 Redis 密码
-    volumes:
-      - ./redis-data:/data
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    volumes:
+      - ./redis-data:/data
 
 volumes:
   mysql-data:

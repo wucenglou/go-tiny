@@ -18,7 +18,7 @@ func SetupRoutes(r *gin.Engine) {
 	// 健康检查路由
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{
-			"message": "I am ok!",
+			"message": "I am ok !",
 		})
 	})
 

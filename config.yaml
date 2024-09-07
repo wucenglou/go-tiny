@@ -14,7 +14,7 @@ database:
 
 redis:
   addr: host.docker.internal:6379
-  password: "123456"
+  password: ""
   db: 0
 
 jwt:
