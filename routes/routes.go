@@ -65,16 +65,16 @@ func SetupRoutes(r *gin.Engine) {
 	// 设置博客路由
 	blogRouter := r.Group("/api/blogs")
 	{
-		blogRouter.POST("", blogController.CreateBlog) // 创建博客
+		blogRouter.GET("/:id", blogController.GetBlog) // 获取单个博客
+		blogRouter.GET("", blogController.GetBlogs)    // 获取所有博客
 
 		// 保护需要认证的路由
 		protectedBlogRouter := blogRouter.Group("")
 		protectedBlogRouter.Use(middleware.JWTAuth())
 		{
+			protectedBlogRouter.POST("", blogController.CreateBlog)
 			protectedBlogRouter.PUT("/:id", blogController.UpdateBlog)    // 更新博客
 			protectedBlogRouter.DELETE("/:id", blogController.DeleteBlog) // 删除博客
-			protectedBlogRouter.GET("/:id", blogController.GetBlog)       // 获取单个博客
-			protectedBlogRouter.GET("", blogController.GetBlogs)          // 获取所有博客
 		}
 	}
 }

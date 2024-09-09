@@ -3,6 +3,7 @@ package controller
 import (
 	"go-tiny/initialize"
 	"go-tiny/model"
+	"go-tiny/utils"
 
 	"github.com/gin-gonic/gin"
 )
@@ -15,16 +16,14 @@ func (bc *BlogController) CreateBlog(c *gin.Context) {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
-
 	// 获取当前登录用户的 ID
-	currentUserID := c.GetString("username")
-
+	claims, _ := utils.GetClaims(c)
+	currentUserID := claims.Id
 	var user model.User
-	if err := initialize.DB.Where("username = ?", currentUserID).First(&user).Error; err != nil {
+	if err := initialize.DB.Where("id = ?", currentUserID).First(&user).Error; err != nil {
 		c.JSON(404, gin.H{"error": "User not found"})
 		return
 	}
-
 	blog.AuthorID = user.ID
 	initialize.DB.Create(&blog)
 	c.JSON(201, blog)

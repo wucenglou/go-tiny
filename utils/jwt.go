@@ -2,7 +2,6 @@ package utils
 
 import (
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -54,7 +53,11 @@ func ParseToken(tokenString string) (*Claims, error) {
 	return nil, errors.New("invalid token")
 }
 
-func GetUserID(c *gin.Context) uint {
-	fmt.Println(c)
-	return 1
+func GetClaims(c *gin.Context) (*Claims, error) {
+	userInfo, ok := c.Get("claims")
+	if !ok {
+		c.AbortWithStatusJSON(401, gin.H{"error": "Unauthorized"})
+		return nil, errors.New("Unauthorized")
+	}
+	return userInfo.(*Claims), nil
 }
