@@ -14,16 +14,14 @@ import (
 var DB *gorm.DB
 
 // InitDB 初始化数据库连接
-func InitDB() (*gorm.DB, error) {
+func InitDB() *gorm.DB {
 	dsn := getDSN()
 	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
 	if err != nil {
 		log.Fatalf("Error connecting to the database: %v", err)
 	}
-	DB = db
 	RegisterTables(db)
-	log.Println("Connected to the database.")
-	return DB, nil
+	return db
 }
 
 // RegisterTables 注册数据库表

@@ -3,8 +3,8 @@ server:
 
 database:
   driver: mysql
-  # host: 127.0.0.1
-  host: host.docker.internal
+  host: 127.0.0.1
+  # host: host.docker.internal
   port: 3306
   username: gotiny
   password: 123456
@@ -14,8 +14,8 @@ database:
   loc: Local
 
 redis:
-  # addr: 127.0.0.1:6379
-  addr: host.docker.internal:6379
+  addr: 127.0.0.1:6379
+  # addr: host.docker.internal:6379
   password: ""
   db: 0
 
