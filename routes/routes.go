@@ -65,8 +65,9 @@ func SetupRoutes(r *gin.Engine) {
 	// 设置博客路由
 	blogRouter := r.Group("/api/blogs")
 	{
-		blogRouter.GET("/:id", blogController.GetBlog) // 获取单个博客
-		blogRouter.GET("", blogController.GetBlogs)    // 获取所有博客
+		blogRouter.GET("/:id", blogController.GetBlog)        // 获取单个博客
+		blogRouter.GET("", blogController.GetBlogs)           // 获取所有博客
+		blogRouter.GET("/search", blogController.SearchBlogs) // 获取所有博客
 
 		// 保护需要认证的路由
 		protectedBlogRouter := blogRouter.Group("")
