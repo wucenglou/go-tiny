@@ -7,11 +7,13 @@ import (
 	"go-tiny/initialize"
 	"go-tiny/model"
 	"go-tiny/utils"
+	"log"
 	"strings"
 	"time"
 
+	"github.com/elastic/go-elasticsearch/v8/esapi"
 	"github.com/gin-gonic/gin"
-	"github.com/olivere/elastic/v7"
+
 	"gorm.io/gorm"
 	"k8s.io/apimachinery/pkg/util/rand"
 )
@@ -70,24 +72,41 @@ func (bc *BlogController) CreateBlog(c *gin.Context) {
 
 	// 将博客条目索引到 Elasticsearch
 	esBlog := map[string]interface{}{
-		"id":         blog.ID,
-		"title":      blog.Title,
-		"content":    blog.Content,
-		"author_id":  blog.AuthorID,
-		"created_at": blog.CreatedAt,
-		"updated_at": blog.UpdatedAt,
+		"id":        blog.ID,
+		"title":     blog.Title,
+		"content":   blog.Content,
+		"author_id": blog.AuthorID,
+		"author": map[string]interface{}{
+			"id":   user.ID,
+			"name": user.Username, // 假设 User 有一个 Username 字段
+		},
+		"published_at": blog.PublishedAt,
+		"created_at":   blog.CreatedAt,
+		"updated_at":   blog.UpdatedAt,
+	}
+
+	// 将文档序列化为 JSON 字符串
+	body, err := json.Marshal(esBlog)
+	if err != nil {
+		log.Printf("Failed to marshal blog document: %v", err)
 	}
 
 	// 索引文档到 Elasticsearch
-	_, err := initialize.EsClient.Index().
-		Index("blogs").
-		Id(fmt.Sprintf("%d", blog.ID)).
-		BodyJson(esBlog).
-		Refresh("true").
-		Do(context.Background())
+	req := esapi.IndexRequest{
+		Index:      "blogs",
+		DocumentID: fmt.Sprintf("%d", blog.ID), // 使用正确的字段名称 DocumentID
+		Body:       strings.NewReader(string(body)),
+		OpType:     "index",
+		Refresh:    "wait_for",
+	}
+	res, err := req.Do(context.Background(), initialize.EsClient)
 	if err != nil {
 		c.JSON(500, gin.H{"error": "Failed to index blog to Elasticsearch"})
 		return
+	}
+	defer res.Body.Close()
+	if res.IsError() {
+		log.Printf("[%s] Error indexing document: %s", res.Status(), res.String())
 	}
 
 	c.JSON(201, blog)
@@ -136,11 +155,27 @@ func (bc *BlogController) UpdateBlog(c *gin.Context) {
 
 func (bc *BlogController) DeleteBlog(c *gin.Context) {
 	var blog model.Blog
-	if initialize.DB.Where("id = ?", c.Param("id")).Delete(&blog).RowsAffected == 0 {
+	fmt.Println("Deleting blog with ID:", c.Param("id"))
+	id := c.Param("id")
+	if initialize.DB.Where("id = ?", id).Delete(&blog).RowsAffected == 0 {
 		c.AbortWithStatusJSON(404, gin.H{"error": "Blog not found"})
 		return
 	}
-	c.JSON(204, gin.H{"message": "Blog deleted"})
+	// 构建删除博客的索引请求
+	req := esapi.DeleteRequest{
+		Index:      "blogs",
+		DocumentID: id,
+	}
+	res, err := req.Do(context.Background(), initialize.EsClient)
+	if err != nil {
+		log.Printf("Failed to delete blog from Elasticsearch: %v", err)
+	}
+	defer res.Body.Close()
+	if res.IsError() {
+		log.Printf("[%s] Error deleting document: %s", res.Status(), res.String())
+	}
+
+	c.JSON(200, gin.H{"message": "Blog deleted"})
 }
 
 func (bc *BlogController) SearchBlogs(c *gin.Context) {
@@ -154,27 +189,29 @@ func (bc *BlogController) SearchBlogsByElastic(c *gin.Context) {
 	// 获取查询关键词
 	query := c.Query("keyword")
 	fmt.Println("Searching for:", query)
-	exists, err := initialize.EsClient.IndexExists("blogs").Do(context.Background())
-	if err != nil {
-		fmt.Println("Error checking index existence:", err)
-	}
-	if !exists {
-		fmt.Println("Index does not exist")
-	}
 
-	// 构建 Elasticsearch 查询
-	searchSource := elastic.NewSearchSource()
-	searchSource.Query(elastic.NewMultiMatchQuery(query, "title", "content").Type("best_fields").Operator("or").Analyzer("ik_smart"))
-
-	searchResult, err := initialize.EsClient.Search().
-		Index("blogs").
-		SearchSource(searchSource).
-		Do(context.Background())
+	q := esapi.SearchRequest{
+		Index: []string{"blogs"},
+		Body: strings.NewReader(`{
+			"query": {
+				"multi_match": {
+					"query": "` + query + `",
+					"fields": ["title^2", "content"],
+					"analyzer": "ik_max_word",
+					"type": "most_fields"
+				}
+			}
+		}`),
+	}
+	res, err := q.Do(context.Background(), initialize.EsClient)
 	if err != nil {
 		fmt.Println("Error searching:", err)
 	}
+	defer res.Body.Close()
+	var result map[string]interface{}
+	json.NewDecoder(res.Body).Decode(&result)
 	// 返回查询结果
-	c.JSON(200, searchResult)
+	c.JSON(200, result["hits"])
 }
 
 // 处理数据索引
@@ -187,64 +224,64 @@ func ExportBlogs(db *gorm.DB) ([]model.Blog, error) {
 	return blogs, nil
 }
 
-func IndexBlogsToElasticsearch(esClient *elastic.Client, blogs []model.Blog) error {
-	for _, blog := range blogs {
-		// 查询用户信息以获取作者名称
-		var user model.User
+// func IndexBlogsToElasticsearch(esClient *elastic.Client, blogs []model.Blog) error {
+// 	for _, blog := range blogs {
+// 		// 查询用户信息以获取作者名称
+// 		var user model.User
 
-		key := fmt.Sprintf("%d", blog.AuthorID)
+// 		key := fmt.Sprintf("%d", blog.AuthorID)
 
-		res := initialize.RedisClient.Get(context.Background(), key)
-		if res.Err() == nil {
-			userJSON := res.Val()
-			err := json.Unmarshal([]byte(userJSON), &user)
-			if err != nil {
-				fmt.Println("Error unmarshaling JSON:", err)
-			}
-		} else {
-			// 从数据库中查询用户信息
-			if err := initialize.DB.Where("id = ?", blog.AuthorID).First(&user).Error; err != nil {
-				return fmt.Errorf("failed to find user with ID %d: %w", blog.AuthorID, err)
-			}
-			userJson, _ := json.Marshal(user)
-			// 将用户信息缓存到 Redis
-			initialize.RedisClient.Set(context.Background(), key, userJson, 0)
-		}
+// 		res := initialize.RedisClient.Get(context.Background(), key)
+// 		if res.Err() == nil {
+// 			userJSON := res.Val()
+// 			err := json.Unmarshal([]byte(userJSON), &user)
+// 			if err != nil {
+// 				fmt.Println("Error unmarshaling JSON:", err)
+// 			}
+// 		} else {
+// 			// 从数据库中查询用户信息
+// 			if err := initialize.DB.Where("id = ?", blog.AuthorID).First(&user).Error; err != nil {
+// 				return fmt.Errorf("failed to find user with ID %d: %w", blog.AuthorID, err)
+// 			}
+// 			userJson, _ := json.Marshal(user)
+// 			// 将用户信息缓存到 Redis
+// 			initialize.RedisClient.Set(context.Background(), key, userJson, 0)
+// 		}
 
-		// if err := initialize.DB.Where("id = ?", blog.AuthorID).First(&user).Error; err != nil {
-		// 	return fmt.Errorf("failed to find user with ID %d: %w", blog.AuthorID, err)
-		// }
+// 		// if err := initialize.DB.Where("id = ?", blog.AuthorID).First(&user).Error; err != nil {
+// 		// 	return fmt.Errorf("failed to find user with ID %d: %w", blog.AuthorID, err)
+// 		// }
 
-		// 构建 Elasticsearch 文档
-		esBlog := map[string]interface{}{
-			"id":        blog.ID,
-			"title":     blog.Title,
-			"content":   blog.Content,
-			"author_id": blog.AuthorID,
-			"author": map[string]interface{}{
-				"id":   user.ID,
-				"name": user.Username, // 假设 User 有一个 Name 字段
-			},
-			"published_at": blog.PublishedAt,
-			"created_at":   blog.CreatedAt,
-			"updated_at":   blog.UpdatedAt,
-		}
+// 		// 构建 Elasticsearch 文档
+// 		esBlog := map[string]interface{}{
+// 			"id":        blog.ID,
+// 			"title":     blog.Title,
+// 			"content":   blog.Content,
+// 			"author_id": blog.AuthorID,
+// 			"author": map[string]interface{}{
+// 				"id":   user.ID,
+// 				"name": user.Username, // 假设 User 有一个 Name 字段
+// 			},
+// 			"published_at": blog.PublishedAt,
+// 			"created_at":   blog.CreatedAt,
+// 			"updated_at":   blog.UpdatedAt,
+// 		}
 
-		// 索引文档到 Elasticsearch
-		_, err := esClient.Index().
-			Index("blogs").
-			Id(fmt.Sprintf("%d", blog.ID)).
-			BodyJson(esBlog).
-			Refresh("wait_for").
-			Do(context.Background())
-		if err != nil {
-			return fmt.Errorf("failed to index blog to Elasticsearch: %w", err)
-		}
-	}
-	return nil
-}
+// 		// 索引文档到 Elasticsearch
+// 		_, err := esClient.Index().
+// 			Index("blogs").
+// 			Id(fmt.Sprintf("%d", blog.ID)).
+// 			BodyJson(esBlog).
+// 			Refresh("wait_for").
+// 			Do(context.Background())
+// 		if err != nil {
+// 			return fmt.Errorf("failed to index blog to Elasticsearch: %w", err)
+// 		}
+// 	}
+// 	return nil
+// }
 
-func IndexBlogToElasticsearch(esClient *elastic.Client, blog model.Blog) error {
+func IndexBlogToElasticsearch(blog model.Blog) error {
 	// 查询用户信息以获取作者名称
 	var user model.User
 	if err := initialize.DB.Where("id = ?", blog.AuthorID).First(&user).Error; err != nil {
@@ -266,15 +303,35 @@ func IndexBlogToElasticsearch(esClient *elastic.Client, blog model.Blog) error {
 		"updated_at":   blog.UpdatedAt,
 	}
 
-	// 索引文档到 Elasticsearch
-	_, err := esClient.Index().
-		Index("blogs").
-		Id(fmt.Sprintf("%d", blog.ID)).
-		BodyJson(esBlog).
-		Refresh("wait_for").
-		Do(context.Background())
+	// 将文档序列化为 JSON 字符串
+	body, err := json.Marshal(esBlog)
 	if err != nil {
+		log.Printf("Failed to marshal blog document: %v", err)
 		return err
+	}
+
+	// 索引文档到 Elasticsearch
+	req := esapi.IndexRequest{
+		Index:      "blogs",
+		DocumentID: fmt.Sprintf("%d", blog.ID), // 使用正确的字段名称 DocumentID
+		Body:       strings.NewReader(string(body)),
+		OpType:     "index",
+		Refresh:    "wait_for", // 立即刷新索引
+	}
+
+	// 执行请求
+	res, err := req.Do(context.Background(), initialize.EsClient)
+	if err != nil {
+		log.Printf("Error getting response: %v", err)
+		return err
+	}
+	defer res.Body.Close()
+
+	if res.IsError() {
+		var e map[string]interface{}
+		json.NewDecoder(res.Body).Decode(&e)
+		log.Printf("Error indexing blog %d: %v", blog.ID, e)
+		return fmt.Errorf("error indexing blog %d", blog.ID)
 	}
 
 	return nil

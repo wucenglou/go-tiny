@@ -12,7 +12,7 @@ import (
 func main() {
 	initialize.InitConfig()
 	initialize.InitRedis()
-	// initialize.InitElastic()
+	initialize.InitElastic()
 	// 初始化数据库连接
 	initialize.DB = initialize.InitDB()
 	if initialize.DB != nil {
@@ -44,7 +44,7 @@ func main() {
 	// 			defer blogWg.Done()
 	// 			semaphore <- struct{}{}        // 获取信号量
 	// 			defer func() { <-semaphore }() // 释放信号量
-	// 			if err := controller.IndexBlogToElasticsearch(initialize.EsClient, blog); err != nil {
+	// 			if err := controller.IndexBlogToElasticsearch(blog); err != nil {
 	// 				log.Printf("Error indexing blog to Elasticsearch: %s", err)
 	// 			}
 	// 		}(blog)
