@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"go-tiny/controller"
 	"go-tiny/initialize"
 	"go-tiny/routes"
 
@@ -12,6 +13,8 @@ import (
 func main() {
 	initialize.InitConfig()
 	initialize.InitRedis()
+	go controller.StartWorker()
+
 	initialize.InitElastic()
 	// 初始化数据库连接
 	initialize.DB = initialize.InitDB()

@@ -70,7 +70,55 @@ func (bc *BlogController) CreateBlog(c *gin.Context) {
 	blog.AuthorID = user.ID
 	initialize.DB.Create(&blog)
 
-	// 将博客条目索引到 Elasticsearch
+	// go func() {
+	// // 将博客条目索引到 Elasticsearch
+	// esBlog := map[string]interface{}{
+	// 	"id":        blog.ID,
+	// 	"title":     blog.Title,
+	// 	"content":   blog.Content,
+	// 	"author_id": blog.AuthorID,
+	// 	"author": map[string]interface{}{
+	// 		"id":   user.ID,
+	// 		"name": user.Username, // 假设 User 有一个 Username 字段
+	// 	},
+	// 	"published_at": blog.PublishedAt,
+	// 	"created_at":   blog.CreatedAt,
+	// 	"updated_at":   blog.UpdatedAt,
+	// }
+
+	// // 将文档序列化为 JSON 字符串
+	// body, err := json.Marshal(esBlog)
+	// if err != nil {
+	// 	log.Printf("Failed to marshal blog document: %v", err)
+	// }
+
+	// // 索引文档到 Elasticsearch
+	// req := esapi.IndexRequest{
+	// 	Index:      "blogs",
+	// 	DocumentID: fmt.Sprintf("%d", blog.ID), // 使用正确的字段名称 DocumentID
+	// 	Body:       strings.NewReader(string(body)),
+	// 	OpType:     "index",
+	// 	Refresh:    "wait_for",
+	// }
+	// res, err := req.Do(context.Background(), initialize.EsClient)
+	// if err != nil {
+	// 	c.JSON(500, gin.H{"error": "Failed to index blog to Elasticsearch"})
+	// 	return
+	// }
+	// defer res.Body.Close()
+	// if res.IsError() {
+	// 	log.Printf("[%s] Error indexing document: %s", res.Status(), res.String())
+	// }
+	// }()
+
+	// 将索引任务推送到Redis队列
+	enqueueIndexTask(blog, user)
+
+	c.JSON(200, blog)
+}
+
+// 将索引任务推送到Redis队列
+func enqueueIndexTask(blog model.Blog, user model.User) {
 	esBlog := map[string]interface{}{
 		"id":        blog.ID,
 		"title":     blog.Title,
@@ -85,31 +133,41 @@ func (bc *BlogController) CreateBlog(c *gin.Context) {
 		"updated_at":   blog.UpdatedAt,
 	}
 
-	// 将文档序列化为 JSON 字符串
 	body, err := json.Marshal(esBlog)
 	if err != nil {
 		log.Printf("Failed to marshal blog document: %v", err)
-	}
-
-	// 索引文档到 Elasticsearch
-	req := esapi.IndexRequest{
-		Index:      "blogs",
-		DocumentID: fmt.Sprintf("%d", blog.ID), // 使用正确的字段名称 DocumentID
-		Body:       strings.NewReader(string(body)),
-		OpType:     "index",
-		Refresh:    "wait_for",
-	}
-	res, err := req.Do(context.Background(), initialize.EsClient)
-	if err != nil {
-		c.JSON(500, gin.H{"error": "Failed to index blog to Elasticsearch"})
 		return
 	}
-	defer res.Body.Close()
-	if res.IsError() {
-		log.Printf("[%s] Error indexing document: %s", res.Status(), res.String())
-	}
 
-	c.JSON(201, blog)
+	ctx := context.Background()
+	_, err = initialize.RedisClient.RPush(ctx, "blog_index_queue", body).Result()
+	if err != nil {
+		log.Printf("添加队列失败: %v", err)
+		return
+	}
+	log.Printf("添加队列 ID %d", blog.ID)
+}
+
+func StartWorker() {
+	ctx := context.Background()
+	for {
+		// 从Redis队列中取出任务
+		result, err := initialize.RedisClient.BLPop(ctx, 0, "blog_index_queue").Result()
+		if err != nil {
+			log.Printf("Failed to dequeue task from Redis: %v", err)
+			time.Sleep(time.Second * 5)
+			continue
+		}
+		// 解析任务
+		var esBlog map[string]interface{}
+		err = json.Unmarshal([]byte(result[1]), &esBlog)
+		// log.Printf("解析任务: %v", esBlog)
+		if err != nil {
+			log.Printf("Failed to parse task: %v", err)
+			continue
+		}
+		EndexBlogToElasticsearch(esBlog)
+	}
 }
 
 func (bc *BlogController) GetBlogs(c *gin.Context) {
@@ -150,6 +208,39 @@ func (bc *BlogController) UpdateBlog(c *gin.Context) {
 	}
 
 	initialize.DB.Save(&blog)
+
+	go func() {
+		// 构建更新博客的索引请求
+		esBlog := map[string]interface{}{
+			"id":        blog.ID,
+			"title":     blog.Title,
+			"content":   blog.Content,
+			"author_id": blog.AuthorID,
+			"author": map[string]interface{}{
+				"id":   blog.Author.ID,
+				"name": blog.Author.Username,
+			},
+			"published_at": blog.PublishedAt,
+		}
+
+		// 将文档序列化为 JSON 字符串
+		body, err := json.Marshal(esBlog)
+		if err != nil {
+			log.Printf("Failed to marshal blog document: %v", err)
+		}
+		req := esapi.UpdateRequest{
+			Index:      "blogs",
+			DocumentID: fmt.Sprintf("%d", blog.ID),
+			Body:       strings.NewReader(string(body)),
+			Refresh:    "wait_for",
+		}
+		res, err := req.Do(context.Background(), initialize.EsClient)
+		if err != nil {
+			log.Printf("Failed to update blog in Elasticsearch: %v", err)
+		}
+		defer res.Body.Close()
+	}()
+
 	c.JSON(200, blog)
 }
 
@@ -280,6 +371,32 @@ func ExportBlogs(db *gorm.DB) ([]model.Blog, error) {
 // 	}
 // 	return nil
 // }
+
+func EndexBlogToElasticsearch(esBlog map[string]interface{}) {
+	id := esBlog["id"].(float64)
+	body, _ := json.Marshal(esBlog)
+
+	log.Printf("Indexing blog with ID %d", int(id))
+
+	req := esapi.IndexRequest{
+		Index:      "blogs",
+		DocumentID: fmt.Sprintf("%d", int(id)),
+		Body:       strings.NewReader(string(body)),
+		OpType:     "index",
+		Refresh:    "wait_for",
+	}
+	res, err := req.Do(context.Background(), initialize.EsClient)
+	if err != nil {
+		log.Printf("Failed to index blog to Elasticsearch: %v", err)
+		return
+	}
+	defer res.Body.Close()
+	if res.IsError() {
+		log.Printf("[%s] Error indexing document: %s", res.Status(), res.String())
+	} else {
+		log.Printf("Successfully indexed blog with ID %d", int(id))
+	}
+}
 
 func IndexBlogToElasticsearch(blog model.Blog) error {
 	// 查询用户信息以获取作者名称
