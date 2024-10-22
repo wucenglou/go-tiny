@@ -16,7 +16,7 @@ func main() {
 	initialize.InitRabbitMQ()
 
 	go controller.StartWorker()
-	initialize.InitElastic()
+	// initialize.InitElastic()
 	// 初始化数据库连接
 	initialize.DB = initialize.InitDB()
 	if initialize.DB != nil {

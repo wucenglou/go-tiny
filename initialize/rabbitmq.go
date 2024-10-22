@@ -3,7 +3,7 @@ package initialize
 import (
 	"log"
 
-	"github.com/streadway/amqp"
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 func InitRabbitMQ() (*amqp.Connection, error) {
@@ -28,6 +28,7 @@ func InitRabbitMQ() (*amqp.Connection, error) {
 	if err != nil {
 		log.Fatalf("Failed to connect to RabbitMQ: %s", err)
 	}
+	log.Println("Connected to RabbitMQ")
 	defer conn.Close()
 	return conn, err
 
