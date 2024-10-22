@@ -13,8 +13,9 @@ import (
 func main() {
 	initialize.InitConfig()
 	initialize.InitRedis()
-	go controller.StartWorker()
+	initialize.InitRabbitMQ()
 
+	go controller.StartWorker()
 	initialize.InitElastic()
 	// 初始化数据库连接
 	initialize.DB = initialize.InitDB()

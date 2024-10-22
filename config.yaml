@@ -22,3 +22,39 @@ redis:
 jwt:
   secret: gotiny
   expire_hours: 720
+
+rabbitmq:
+  host: 127.0.0.1
+  # host: host.docker.internal
+  port: 5672
+  username: guest
+  password: guest
+  queue: gotiny
+  exchange: gotiny
+  routing_key: gotiny
+  exchange_type: direct
+  durable: true
+  auto_delete: false
+  internal: false
+  no_wait: false
+  no_local: false
+  max_retries: 0
+  retry_delay: 0
+  max_retry_delay: 0
+  global: false
+  delivery_mode: 2
+  priority: 0
+  content_type: text/plain
+  content_encoding: utf-8
+  correlation_id: ""
+  reply_to: ""
+  expiration: ""
+  message_id: ""
+  timestamp: ""
+  type: ""
+  user_id: ""
+  app_id: ""
+  cluster_id: ""
+  headers: {}
+  body: ""
+
