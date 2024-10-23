@@ -29,7 +29,7 @@ func InitRabbitMQ() (*amqp.Connection, error) {
 		log.Fatalf("Failed to connect to RabbitMQ: %s", err)
 	}
 	log.Println("Connected to RabbitMQ")
-	defer conn.Close()
+	// defer conn.Close()
 	return conn, err
 
 }
